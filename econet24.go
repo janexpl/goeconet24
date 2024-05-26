@@ -131,9 +131,9 @@ func NewEconet24(username, password, uid, hostname string, logger *slog.Logger) 
 		logger.Error("Nie znaleziono CSRF Token")
 	}
 	var param url.Values
-	param.Set("csrfmiddlewaretoken", csrfToken)
-	param.Set("username", username)
-	param.Set("password", password)
+	param.Add("csrfmiddlewaretoken", csrfToken)
+	param.Add("username", username)
+	param.Add("password", password)
 	var payload = bytes.NewBufferString(param.Encode())
 	request, err := http.NewRequest("POST", hostname+"/login/?next=main", payload)
 	if err != nil {
