@@ -126,7 +126,7 @@ func NewEconet24(username, password, uid, hostname string, logger *slog.Logger) 
 
 	csrfToken, exists := doc.Find("input[name='csrfmiddlewaretoken']").Attr("value")
 	if exists {
-		logger.Info("CSRF Token: %s\n", csrfToken)
+		logger.Info("get CSRF token", "CSRF Token: ", csrfToken)
 	} else {
 		logger.Error("Nie znaleziono CSRF Token")
 	}
