@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/http/cookiejar"
 	"net/url"
 	"os"
 	"time"
@@ -52,14 +53,17 @@ func (e econet) ChangeHUWStatus(status int) error {
 }
 
 func (e econet) setParam(element, value int, key bool) error {
-	var command string
+	var command, service string
 	if key {
 		command = "newParamKey"
+		service = "rmCurrNewParam"
 	} else {
 		command = "newParamIndex"
+		service = "rmNewParam"
 	}
+
 	now := time.Now()
-	cmd := fmt.Sprintf("/rmCurrNewParam?uid=%s&%s=%d&newParamValue=%d&_=%d", e.uid, command, element, value, now.Unix())
+	cmd := fmt.Sprintf("%s?uid=%s&%s=%d&newParamValue=%d&_=%d", service, e.uid, command, element, value, now.Unix())
 	req, err := e.getRequest(cmd)
 	if err != nil {
 		return err
@@ -72,6 +76,11 @@ func (e econet) setParam(element, value int, key bool) error {
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("bad status code: %d", resp.StatusCode)
 	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Println("test")
+	}
+	fmt.Println(string(body))
 	return nil
 }
 func (e econet) GetDeviceRegParams() (Params, error) {
@@ -81,9 +90,12 @@ func (e econet) GetDeviceRegParams() (Params, error) {
 	r := Response{}
 	cmd := fmt.Sprintf("getDeviceParams?uid=%s&_=%d", e.uid, time.Now().Unix())
 	req, err := e.getRequest(cmd)
+	if err != nil {
+		return Params{}, fmt.Errorf("get device reg params: %w", err)
+	}
 	resp, err := e.client.Do(req)
 	if err != nil {
-		return Params{}, err
+		return Params{}, fmt.Errorf("sending request: %w", err)
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
@@ -98,6 +110,7 @@ func (e econet) GetDeviceRegParams() (Params, error) {
 
 func (e econet) getRequest(cmd string) (*http.Request, error) {
 	req, err := http.NewRequest("GET", e.hostname+"/service/"+cmd, nil)
+	e.logger.Debug("getRequest", "URL", req.URL)
 	if err != nil {
 		return nil, err
 	}
@@ -108,8 +121,12 @@ func NewEconet24(username, password, uid, hostname string, logger *slog.Logger) 
 	if logger == nil {
 		logger = slog.New(slog.NewTextHandler(os.Stdout, nil))
 	}
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		logger.Error("Failed to create cookie jar")
+	}
 	client := http.Client{
-		Jar: http.DefaultClient.Jar,
+		Jar: jar,
 	}
 	resp, err := client.Get(hostname)
 	if err != nil {
@@ -126,15 +143,17 @@ func NewEconet24(username, password, uid, hostname string, logger *slog.Logger) 
 
 	csrfToken, exists := doc.Find("input[name='csrfmiddlewaretoken']").Attr("value")
 	if exists {
-		logger.Info("get CSRF token", "CSRF Token: ", csrfToken)
+		logger.Debug("get CSRF token", "CSRF Token: ", csrfToken)
 	} else {
 		logger.Error("Nie znaleziono CSRF Token")
 	}
-	var param url.Values
-	param.Add("csrfmiddlewaretoken", csrfToken)
-	param.Add("username", username)
-	param.Add("password", password)
-	var payload = bytes.NewBufferString(param.Encode())
+	formData := url.Values{
+		"csrfmiddlewaretoken": []string{csrfToken},
+		"username":            []string{username},
+		"password":            []string{password},
+	}
+
+	var payload = bytes.NewBufferString(formData.Encode())
 	request, err := http.NewRequest("POST", hostname+"/login/?next=main", payload)
 	if err != nil {
 		logger.Error("Unable to create request: ", err)
@@ -147,10 +166,12 @@ func NewEconet24(username, password, uid, hostname string, logger *slog.Logger) 
 	if resp.StatusCode != 200 {
 		logger.Error("Unable to log in econet24.com")
 	}
+
 	return &econet{
 		client:              &client,
 		uid:                 uid,
 		logger:              logger,
+		hostname:            hostname,
 		csrdmiddlewaretoken: csrfToken,
 	}
 }
