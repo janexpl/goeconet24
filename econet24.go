@@ -47,7 +47,7 @@ type econet struct {
 }
 
 func (e econet) ChangeBoilerStatus(status BoilerStatus) error {
-	if err := e.setParam("BOILER_STATUS", int(status), NewParamName); err != nil {
+	if err := e.setParam("BOILER_CONTROL", int(status), NewParamName); err != nil {
 		return fmt.Errorf("change boiler status: %w", err)
 	}
 	return nil
