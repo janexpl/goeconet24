@@ -32,8 +32,9 @@ type Params struct {
 
 type Econet24 interface {
 	getRequest(cmd string) (*http.Request, error)
-	setParam(element, value int, key bool) error
+	setParam(element interface{}, value int, command CommandType) error
 	ChangeHUWStatus(status int) error
+	ChangeBoilerStatus(status BoilerStatus) error
 	GetDeviceRegParams() (Params, error)
 }
 
@@ -45,26 +46,38 @@ type econet struct {
 	csrdmiddlewaretoken string
 }
 
+func (e econet) ChangeBoilerStatus(status BoilerStatus) error {
+	if err := e.setParam("BOILER_STATUS", int(status), NewParamName); err != nil {
+		return fmt.Errorf("change boiler status: %w", err)
+	}
+	return nil
+}
+
 func (e econet) ChangeHUWStatus(status int) error {
-	if err := e.setParam(59, status, false); err != nil {
+	if err := e.setParam(HUWHeater, status, NewParamIndex); err != nil {
 		return fmt.Errorf("change HUW status failed: %w", err)
 	}
 	return nil
 }
 
-func (e econet) setParam(element, value int, key bool) error {
-	var command, service string
-	if key {
-		command = "newParamKey"
+func (e econet) setParam(element any, value int, command CommandType) error {
+	var cmd, service string
+
+	switch command {
+	case NewParamKey:
+		cmd = "newParamKey"
 		service = "rmCurrNewParam"
-	} else {
-		command = "newParamIndex"
+	case NewParamIndex:
+		cmd = "newParamIndex"
 		service = "rmNewParam"
+	case NewParamName:
+		cmd = "newParamName"
+		service = "newParam"
 	}
 
 	now := time.Now()
-	cmd := fmt.Sprintf("%s?uid=%s&%s=%d&newParamValue=%d&_=%d", service, e.uid, command, element, value, now.Unix())
-	req, err := e.getRequest(cmd)
+	c := fmt.Sprintf("%s?uid=%s&%s=%v&newParamValue=%d&_=%d", service, e.uid, cmd, element, value, now.Unix())
+	req, err := e.getRequest(c)
 	if err != nil {
 		return err
 	}
