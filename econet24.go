@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/PuerkitoBio/goquery"
 	"io"
 	"log/slog"
 	"net/http"
@@ -11,8 +12,6 @@ import (
 	"net/url"
 	"os"
 	"time"
-
-	"github.com/PuerkitoBio/goquery"
 )
 
 type Params struct {
@@ -44,90 +43,6 @@ type econet struct {
 	uid                 string
 	logger              *slog.Logger
 	csrdmiddlewaretoken string
-}
-
-func (e econet) ChangeBoilerStatus(status BoilerStatus) error {
-	if err := e.setParam("BOILER_CONTROL", int(status), NewParamName); err != nil {
-		return fmt.Errorf("change boiler status: %w", err)
-	}
-	return nil
-}
-
-func (e econet) ChangeHUWStatus(status int) error {
-	if err := e.setParam(HUWHeater, status, NewParamIndex); err != nil {
-		return fmt.Errorf("change HUW status failed: %w", err)
-	}
-	return nil
-}
-
-func (e econet) setParam(element any, value int, command CommandType) error {
-	var cmd, service string
-
-	switch command {
-	case NewParamKey:
-		cmd = "newParamKey"
-		service = "rmCurrNewParam"
-	case NewParamIndex:
-		cmd = "newParamIndex"
-		service = "rmNewParam"
-	case NewParamName:
-		cmd = "newParamName"
-		service = "newParam"
-	}
-
-	now := time.Now()
-	c := fmt.Sprintf("%s?uid=%s&%s=%v&newParamValue=%d&_=%d", service, e.uid, cmd, element, value, now.Unix())
-	req, err := e.getRequest(c)
-	if err != nil {
-		return err
-	}
-	resp, err := e.client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("bad status code: %d", resp.StatusCode)
-	}
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		fmt.Println("test")
-	}
-	fmt.Println(string(body))
-	return nil
-}
-func (e econet) GetDeviceRegParams() (Params, error) {
-	type Response struct {
-		Param Params `json:"curr"`
-	}
-	r := Response{}
-	cmd := fmt.Sprintf("getDeviceParams?uid=%s&_=%d", e.uid, time.Now().Unix())
-	req, err := e.getRequest(cmd)
-	if err != nil {
-		return Params{}, fmt.Errorf("get device reg params: %w", err)
-	}
-	resp, err := e.client.Do(req)
-	if err != nil {
-		return Params{}, fmt.Errorf("sending request: %w", err)
-	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return Params{}, err
-	}
-	if err := json.Unmarshal(body, &r); err != nil {
-		return Params{}, err
-	}
-	return r.Param, nil
-}
-
-func (e econet) getRequest(cmd string) (*http.Request, error) {
-	req, err := http.NewRequest("GET", e.hostname+"/service/"+cmd, nil)
-	e.logger.Debug("getRequest", "URL", req.URL)
-	if err != nil {
-		return nil, err
-	}
-	return req, nil
 }
 
 func NewEconet24(username, password, uid, hostname string, logger *slog.Logger) Econet24 {
@@ -187,4 +102,89 @@ func NewEconet24(username, password, uid, hostname string, logger *slog.Logger) 
 		hostname:            hostname,
 		csrdmiddlewaretoken: csrfToken,
 	}
+}
+
+func (e econet) ChangeBoilerStatus(status BoilerStatus) error {
+	if err := e.setParam("BOILER_CONTROL", int(status), NewParamName); err != nil {
+		return fmt.Errorf("change boiler status: %w", err)
+	}
+	return nil
+}
+
+func (e econet) ChangeHUWStatus(status int) error {
+	if err := e.setParam(HUWHeater, status, NewParamIndex); err != nil {
+		return fmt.Errorf("change HUW status failed: %w", err)
+	}
+	return nil
+}
+
+func (e econet) setParam(element any, value int, command CommandType) error {
+	var cmd, service string
+
+	switch command {
+	case NewParamKey:
+		cmd = "newParamKey"
+		service = "rmCurrNewParam"
+	case NewParamIndex:
+		cmd = "newParamIndex"
+		service = "rmNewParam"
+	case NewParamName:
+		cmd = "newParamName"
+		service = "newParam"
+	}
+
+	now := time.Now()
+	c := fmt.Sprintf("%s?uid=%s&%s=%v&newParamValue=%d&_=%d", service, e.uid, cmd, element, value, now.Unix())
+	req, err := e.getRequest(c)
+	if err != nil {
+		return err
+	}
+	resp, err := e.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("bad status code: %d", resp.StatusCode)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Println("test")
+	}
+	fmt.Println(string(body))
+	return nil
+}
+
+func (e econet) GetDeviceRegParams() (Params, error) {
+	type Response struct {
+		Param Params `json:"curr"`
+	}
+	r := Response{}
+	cmd := fmt.Sprintf("getDeviceParams?uid=%s&_=%d", e.uid, time.Now().Unix())
+	req, err := e.getRequest(cmd)
+	if err != nil {
+		return Params{}, fmt.Errorf("get device reg params: %w", err)
+	}
+	resp, err := e.client.Do(req)
+	if err != nil {
+		return Params{}, fmt.Errorf("sending request: %w", err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return Params{}, err
+	}
+	if err := json.Unmarshal(body, &r); err != nil {
+		return Params{}, err
+	}
+	return r.Param, nil
+}
+
+func (e econet) getRequest(cmd string) (*http.Request, error) {
+	req, err := http.NewRequest("GET", e.hostname+"/service/"+cmd, nil)
+	e.logger.Debug("getRequest", "URL", req.URL)
+	if err != nil {
+		return nil, err
+	}
+	return req, nil
 }
